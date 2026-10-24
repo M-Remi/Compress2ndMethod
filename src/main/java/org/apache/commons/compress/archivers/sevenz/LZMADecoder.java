@@ -1,0 +1,118 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+package org.apache.commons.compress.archivers.sevenz;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+
+import org.apache.commons.compress.MemoryLimitException;
+import org.apache.commons.compress.archivers.ArchiveException;
+import org.apache.commons.compress.utils.ByteUtils;
+import org.apache.commons.io.output.FlushShieldOutputStream;
+import org.tukaani.xz.LZMA2Options;
+import org.tukaani.xz.LZMAInputStream;
+import org.tukaani.xz.LZMAOutputStream;
+
+final class LZMADecoder extends AbstractCoder {
+
+    private static final int LZMA_DICT_IDX = 1;
+    private static final int LZMA_DICT_LEN = 4;
+    private static final int LZMA_PROP_LEN = LZMA_DICT_IDX + LZMA_DICT_LEN;
+
+    LZMADecoder() {
+        super(LZMA2Options.class, Number.class);
+    }
+
+    @Override
+    InputStream decode(final String archiveName, final InputStream in, final long uncompressedLength, final Coder coder, final byte[] password,
+            final int maxMemoryLimitKiB) throws IOException {
+        ArchiveException.requireNonNull(coder.properties, "Missing LZMA properties");
+        if (coder.properties.length < 1) {
+            throw new ArchiveException("LZMA properties too short");
+        }
+        final byte propsByte = coder.properties[0];
+        final int dictSize = getDictionarySize(coder);
+        final int memoryUsageKiB = LZMAInputStream.getMemoryUsage(dictSize, propsByte);
+        MemoryLimitException.checkKiB(memoryUsageKiB, maxMemoryLimitKiB);
+        final LZMAInputStream lzmaIn = new LZMAInputStream(in, uncompressedLength, propsByte, dictSize);
+        lzmaIn.enableRelaxedEndCondition();
+        return lzmaIn;
+    }
+
+    @Override
+    OutputStream encode(final OutputStream out, final Object opts) throws IOException {
+        // NOOP as LZMAOutputStream throws an exception in flush
+        return new FlushShieldOutputStream(new LZMAOutputStream(out, getOptions(opts), false));
+    }
+
+    private int getDictionarySize(final Coder coder) throws ArchiveException {
+        if (coder.properties.length < LZMA_DICT_LEN + LZMA_DICT_IDX) {
+            throw new ArchiveException("LZMA properties too short (expected " + LZMA_PROP_LEN + " bytes)");
+        }
+        final long dictionarySize = ByteUtils.fromLittleEndian(coder.properties, LZMA_DICT_IDX, LZMA_DICT_LEN);
+        if (dictionarySize > LZMAInputStream.DICT_SIZE_MAX) {
+            throw new ArchiveException("Dictionary larger than 4 GiB maximum size");
+        }
+        return (int) dictionarySize;
+    }
+
+    private LZMA2Options getOptions(final Object opts) throws IOException {
+        if (opts instanceof LZMA2Options) {
+            return (LZMA2Options) opts;
+        }
+        final LZMA2Options options = new LZMA2Options();
+        options.setDictSize(numberOptionOrDefault(opts));
+        return options;
+    }
+
+    @Override
+    byte[] getOptionsAsProperties(final Object opts) throws IOException {
+        final LZMA2Options options = getOptions(opts);
+        final byte props = (byte) ((options.getPb() * 5 + options.getLp()) * 9 + options.getLc());
+        final int dictSize = options.getDictSize();
+        final byte[] o = new byte[5];
+        o[0] = props;
+        ByteUtils.toLittleEndian(o, dictSize, 1, 4);
+        return o;
+    }
+
+    @Override
+    Object getOptionsFromCoder(final Coder coder, final InputStream in) throws IOException {
+        ArchiveException.requireNonNull(coder.properties, "Missing LZMA properties");
+        if (coder.properties.length < 1) {
+            throw new ArchiveException("LZMA properties too short");
+        }
+        final byte propsByte = coder.properties[0];
+        int props = propsByte & 0xFF;
+        final int pb = props / (9 * 5);
+        props -= pb * 9 * 5;
+        final int lp = props / 9;
+        final int lc = props - lp * 9;
+        final LZMA2Options opts = new LZMA2Options();
+        opts.setPb(pb);
+        opts.setLcLp(lc, lp);
+        opts.setDictSize(getDictionarySize(coder));
+        return opts;
+    }
+
+    private int numberOptionOrDefault(final Object opts) {
+        return toInt(opts, LZMA2Options.DICT_SIZE_DEFAULT);
+    }
+}

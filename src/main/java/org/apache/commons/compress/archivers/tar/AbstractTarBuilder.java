@@ -1,0 +1,115 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+package org.apache.commons.compress.archivers.tar;
+
+import org.apache.commons.compress.archivers.AbstractArchiveBuilder;
+
+/**
+ * Abstracts TAR builder operations.
+ *
+ * @param <T> The type of instances to build.
+ * @param <B> The type of builder subclass.
+ * @since 1.29.0
+ */
+public abstract class AbstractTarBuilder<T, B extends AbstractTarBuilder<T, B>> extends AbstractArchiveBuilder<T, B> {
+
+    private int blockSize = TarConstants.DEFAULT_BLKSIZE;
+    private long maxPaxHeaderSize = TarConstants.DEFAULT_MAX_PAX_HEADER_SIZE;
+    private int recordSize = TarConstants.DEFAULT_RCDSIZE;
+    private boolean lenient;
+
+    /**
+     * Constructs a new instance.
+     */
+    protected AbstractTarBuilder() {
+        // empty
+    }
+
+    int getBlockSize() {
+        return blockSize;
+    }
+
+    long getMaxPaxHeaderSize() {
+        return maxPaxHeaderSize;
+    }
+
+    int getRecordSize() {
+        return recordSize;
+    }
+
+    boolean isLenient() {
+        return lenient;
+    }
+
+    /**
+     * Sets the block size.
+     *
+     * @param blockSize The block size.
+     * @return {@code this} instance.
+     */
+    public B setBlockSize(final int blockSize) {
+        this.blockSize = blockSize;
+        return asThis();
+    }
+
+    /**
+     * Sets whether illegal values for group/userid, mode, device numbers and timestamp will be ignored and the fields set to {@link TarArchiveEntry#UNKNOWN}.
+     * When set to false such illegal fields cause an exception instead.
+     *
+     * @param lenient whether illegal values throw exceptions.
+     * @return {@code this} instance.
+     */
+    public B setLenient(final boolean lenient) {
+        this.lenient = lenient;
+        return asThis();
+    }
+
+    /**
+     * Sets the maximum size in bytes of a PAX extended header block that will
+     * be parsed. PAX headers larger than this limit cause a
+     * {@link org.apache.commons.compress.MemoryLimitException}.
+     *
+     * <p>The default is {@value TarConstants#DEFAULT_MAX_PAX_HEADER_SIZE}
+     * (10 MB), which is generous for legitimate archives. Set to
+     * {@link Long#MAX_VALUE} to restore the previous unlimited behavior.</p>
+     *
+     * @param maxPaxHeaderSize the maximum PAX header size in bytes; must be positive.
+     * @return {@code this} instance.
+     * @throws IllegalArgumentException if {@code maxPaxHeaderSize} is not positive.
+     */
+    public B setMaxPaxHeaderSize(final long maxPaxHeaderSize) {
+        if (maxPaxHeaderSize <= 0) {
+            throw new IllegalArgumentException("maxPaxHeaderSize must be positive");
+        }
+        this.maxPaxHeaderSize = maxPaxHeaderSize;
+        return asThis();
+    }
+
+    /**
+     * Sets the record size.
+     *
+     * @param recordSize The record size.
+     * @return {@code this} instance.
+     */
+    public B setRecordSize(final int recordSize) {
+        this.recordSize = recordSize;
+        return asThis();
+    }
+}
